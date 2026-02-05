@@ -1,0 +1,63 @@
+version: "3.8"
+
+services:
+  mcp-skills:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: mcp-skills-server
+    restart: unless-stopped
+    environment:
+      - SKILLS_DIR=/app/skills-data
+      - FILES_DIR=/app/files
+      - PORT=8001
+      - HOST=0.0.0.0
+      # Wichtig: Die öffentliche URL für Download-Links
+      - PUBLIC_BASE_URL=https://webui.homelab-gm.com/mcp-files
+    volumes:
+      # Persistente Skills
+      - skills-data:/app/skills-data
+      # Persistente generierte Dateien
+      - files-data:/app/files
+    networks:
+      - coolify
+    # KEIN ports: - Server ist NUR intern erreichbar!
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8001/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+    labels:
+      # Traefik Routing für /mcp-files/* Pfad
+      - "traefik.enable=true"
+      
+      # HTTP -> HTTPS Redirect
+      - "traefik.http.routers.mcp-files-http.rule=Host(`webui.homelab-gm.com`) && PathPrefix(`/mcp-files`)"
+      - "traefik.http.routers.mcp-files-http.entryPoints=http"
+      - "traefik.http.routers.mcp-files-http.middlewares=redirect-to-https"
+      
+      # HTTPS Route für Downloads
+      - "traefik.http.routers.mcp-files-https.rule=Host(`webui.homelab-gm.com`) && PathPrefix(`/mcp-files`)"
+      - "traefik.http.routers.mcp-files-https.entryPoints=https"
+      - "traefik.http.routers.mcp-files-https.tls=true"
+      - "traefik.http.routers.mcp-files-https.tls.certresolver=letsencrypt"
+      - "traefik.http.routers.mcp-files-https.service=mcp-files-service"
+      
+      # Strip /mcp-files prefix bevor es zum Server geht
+      - "traefik.http.routers.mcp-files-https.middlewares=mcp-strip-prefix"
+      - "traefik.http.middlewares.mcp-strip-prefix.stripprefix.prefixes=/mcp-files"
+      
+      # Service Definition
+      - "traefik.http.services.mcp-files-service.loadbalancer.server.port=8001"
+      
+      # Coolify Labels
+      - "coolify.managed=true"
+
+volumes:
+  skills-data:
+  files-data:
+
+networks:
+  coolify:
+    external: true

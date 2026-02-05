@@ -1,0 +1,10 @@
+name: code-review
+description: Anleitung für effektive Code Reviews und Qualitätsprüfungen
+version: "1.0"
+author: Custom
+tags:
+  - code
+  - review
+  - qualität
+  - entwicklung
+  - git

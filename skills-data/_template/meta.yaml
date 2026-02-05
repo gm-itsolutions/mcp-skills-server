@@ -1,0 +1,7 @@
+name: template
+description: Vorlage für neue Skills - kopieren und anpassen
+version: "1.0"
+author: Dein Name
+tags:
+  - template
+  - beispiel
