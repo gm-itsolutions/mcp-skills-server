@@ -12,11 +12,13 @@ import os
 import uuid
 import base64
 import shutil
+import re
 from pathlib import Path
 from datetime import datetime, timedelta
 from typing import Optional
 import json
 import yaml
+import io
 
 from starlette.applications import Starlette
 from starlette.responses import JSONResponse, HTMLResponse, FileResponse, Response
@@ -49,6 +51,41 @@ def save_metadata():
     METADATA_FILE.write_text(json.dumps(FILE_METADATA, default=str))
 
 load_metadata()
+
+
+# ============ BASE64 HELPER ============
+
+def clean_base64(content_b64: str) -> bytes:
+    """
+    Bereinigt einen Base64-String und dekodiert ihn sicher.
+    
+    Behandelt:
+    - Whitespace (Leerzeichen, Newlines, Tabs)
+    - Nicht-ASCII-Zeichen
+    - Padding-Probleme
+    - Data-URL-Präfixe (data:application/pdf;base64,)
+    """
+    if not content_b64:
+        raise ValueError("Leerer Base64-String")
+    
+    # 1. Entferne Data-URL-Präfix falls vorhanden
+    if ',' in content_b64 and content_b64.startswith('data:'):
+        content_b64 = content_b64.split(',', 1)[1]
+    
+    # 2. Entferne alle Whitespace-Zeichen
+    content_b64 = ''.join(content_b64.split())
+    
+    # 3. Entferne alle nicht-Base64-Zeichen (behalte nur A-Z, a-z, 0-9, +, /, =)
+    content_b64 = re.sub(r'[^A-Za-z0-9+/=]', '', content_b64)
+    
+    # 4. Korrigiere Padding falls nötig
+    # Base64-Strings müssen eine Länge haben, die durch 4 teilbar ist
+    missing_padding = len(content_b64) % 4
+    if missing_padding:
+        content_b64 += '=' * (4 - missing_padding)
+    
+    # 5. Dekodiere
+    return base64.b64decode(content_b64)
 
 
 # ============ SKILL FUNKTIONEN (wie bisher) ============
@@ -210,7 +247,6 @@ def tool_merge_pdfs(pdf_files_base64: list[dict]) -> dict:
     """
     try:
         from pypdf import PdfWriter, PdfReader
-        import io
         
         writer = PdfWriter()
         
@@ -219,7 +255,8 @@ def tool_merge_pdfs(pdf_files_base64: list[dict]) -> dict:
             content_b64 = pdf_data.get("content", "")
             
             try:
-                pdf_bytes = base64.b64decode(content_b64)
+                # KORRIGIERT: Verwende clean_base64 für robustes Decoding
+                pdf_bytes = clean_base64(content_b64)
                 reader = PdfReader(io.BytesIO(pdf_bytes))
                 for page in reader.pages:
                     writer.add_page(page)
@@ -263,9 +300,9 @@ def tool_split_pdf(pdf_base64: str, filename: str, pages: str) -> dict:
     """
     try:
         from pypdf import PdfWriter, PdfReader
-        import io
         
-        pdf_bytes = base64.b64decode(pdf_base64)
+        # KORRIGIERT: Verwende clean_base64
+        pdf_bytes = clean_base64(pdf_base64)
         reader = PdfReader(io.BytesIO(pdf_bytes))
         total_pages = len(reader.pages)
         
@@ -325,9 +362,9 @@ def tool_pdf_to_images(pdf_base64: str, filename: str, dpi: int = 150) -> dict:
     """
     try:
         from pdf2image import convert_from_bytes
-        import io
         
-        pdf_bytes = base64.b64decode(pdf_base64)
+        # KORRIGIERT: Verwende clean_base64
+        pdf_bytes = clean_base64(pdf_base64)
         images = convert_from_bytes(pdf_bytes, dpi=dpi)
         
         base_name = Path(filename).stem
@@ -375,7 +412,6 @@ def tool_create_text_pdf(text: str, filename: str = "document.pdf") -> dict:
         from reportlab.lib.pagesizes import A4
         from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer
         from reportlab.lib.styles import getSampleStyleSheet
-        import io
         
         buffer = io.BytesIO()
         doc = SimpleDocTemplate(buffer, pagesize=A4)
@@ -423,7 +459,8 @@ def tool_upload_file(content_base64: str, filename: str, mime_type: str = "appli
         {"success": bool, "download_url": str, "message": str}
     """
     try:
-        content = base64.b64decode(content_base64)
+        # KORRIGIERT: Verwende clean_base64
+        content = clean_base64(content_base64)
         metadata = store_file(content, filename, mime_type)
         
         return {
@@ -452,7 +489,7 @@ async def health(request):
 async def root(request):
     return JSONResponse({
         "name": "MCP Skills Server",
-        "version": "2.0.0",
+        "version": "2.0.1",
         "features": ["skills", "pdf-tools", "file-downloads"],
         "endpoints": {
             "skills": ["/list_skills", "/get_skill", "/search_skills"],
@@ -573,7 +610,7 @@ def get_openapi_schema(request):
         "info": {
             "title": "MCP Skills Server",
             "description": "Server für Skills und PDF-Verarbeitung mit Download-Links",
-            "version": "2.0.0"
+            "version": "2.0.1"
         },
         "servers": [{"url": base_url}],
         "paths": {
@@ -803,7 +840,7 @@ app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], all
 if __name__ == "__main__":
     port = int(os.getenv("PORT", "8001"))
     host = os.getenv("HOST", "0.0.0.0")
-    print(f"🚀 MCP Skills Server v2.0 startet auf http://{host}:{port}")
+    print(f"🚀 MCP Skills Server v2.0.1 startet auf http://{host}:{port}")
     print(f"📁 Skills: {SKILLS_DIR}")
     print(f"📦 Files: {FILES_DIR}")
     print(f"🔗 Public URL: {PUBLIC_BASE_URL}")
