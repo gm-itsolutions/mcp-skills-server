@@ -1,0 +1,20 @@
+# Forgejo CI (Runner gm-hosting). Prüfung bei jedem Push und Pull Request.
+name: ci
+on:
+  push:
+    branches: [main]
+  pull_request:
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: https://git.gm-itsolutions.de/gm-actions/actions-checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - run: python -m pip install -r requirements.txt
+      - run: python -m compileall -q src
+      # Skill-Ordner nur zeigen lassen, nicht anlegen
+      - run: SKILLS_DIR=$RUNNER_TEMP/s FILES_DIR=$RUNNER_TEMP/f python -c 'import src.server'
+  docker:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: https://git.gm-itsolutions.de/gm-actions/actions-checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - run: docker build -t ci-test .
